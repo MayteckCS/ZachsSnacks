@@ -574,15 +574,140 @@
       return              { card: 'qty-green',   badge: 'green',  label: '🟢 Stocked' };
     }
 
+    // ── Drink grouping ────────────────────────────────────────────
+    // Keywords that qualify a row as an energy drink
+    const DRINK_RE = /monster|ghost/i;
+    const DRINK_PRICE_DISPLAY = '$3.00 (or 2 for $5.00)';
+    const DRINK_AVG_PRICE = 2.50; // weighted average for 2-for-$5 deal revenue calc
+
+    function groupRows(rows) {
+      const drinkRows  = rows.filter(r => DRINK_RE.test(r.product));
+      const snackRows  = rows.filter(r => !DRINK_RE.test(r.product));
+
+      let drinkGroup = null;
+      if (drinkRows.length > 0) {
+        const totalInitInv  = drinkRows.reduce((s, r) => s + r.initInv,   0);
+        const totalSold     = drinkRows.reduce((s, r) => s + r.unitsSold, 0);
+        const totalDamaged  = drinkRows.reduce((s, r) => s + r.damaged,   0);
+        const totalCostBasis = drinkRows.reduce((s, r) => s + r.initInv * r.unitCost, 0);
+        const avgUnitCost   = totalInitInv > 0 ? totalCostBasis / totalInitInv : 0;
+        // Revenue uses $2.50 weighted avg to reflect 2-for-$5 deals
+        const drinkRevenue  = totalSold * DRINK_AVG_PRICE;
+        const flavors       = drinkRows.map(r => r.product).join(', ');
+
+        drinkGroup = {
+          product:    'Energy Drinks',
+          initInv:    totalInitInv,
+          unitCost:   avgUnitCost,
+          salePrice:  DRINK_AVG_PRICE,   // used for margin check & profit meter
+          unitsSold:  totalSold,
+          damaged:    totalDamaged,
+          revenue:    drinkRevenue,       // pre-computed, do not re-multiply
+          flavors,
+          isDrinkGroup: true,
+        };
+      }
+
+      return { drinkGroup, snackRows };
+    }
+
+    // ── Build a single trading card element ───────────────────────
+    function buildCard(r, maxRevenue, idx) {
+      const qty       = Math.max(0, r.initInv - r.unitsSold - r.damaged);
+      const soldOut   = qty === 0 && r.unitsSold === 0 && r.initInv === 0;
+      const itemRev   = r.isDrinkGroup ? r.revenue : r.unitsSold * r.salePrice;
+      const fillPct   = maxRevenue > 0 ? Math.round((itemRev / maxRevenue) * 100) : 0;
+      const { card, badge, label } = qty === 0 && !soldOut
+        ? { card: 'qty-red', badge: 'red', label: '🔴 RESTOCK NOW' }
+        : qtyClass(qty);
+      const margin    = r.salePrice - r.unitCost;
+      const lowMargin = margin < 0.20;
+
+      // Sold-out grayscale wrapper
+      const soldOutStyle = (qty === 0) ? 'filter:grayscale(1);opacity:0.55;' : '';
+
+      // Price display: energy drinks get the multi-buy string
+      const priceDisplay = r.isDrinkGroup ? DRINK_PRICE_DISPLAY : fmt(r.salePrice);
+
+      // Flavor sub-line for energy drink group
+      const flavorLine = r.isDrinkGroup
+        ? `<div style="font-size:0.6rem;color:var(--muted);margin-top:2px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;line-height:1.3;">${escHtml(r.flavors)}</div>`
+        : '';
+
+      const el = document.createElement('div');
+      el.className = `trading-card ${card}`;
+      el.style.cssText = soldOutStyle;
+      el.innerHTML = `
+        <div class="card-stripe"></div>
+        <div class="card-body">
+          <div class="card-header">
+            <div style="flex:1;min-width:0;">
+              <div class="product-name" style="display:flex;align-items:center;gap:6px;">
+                ${r.isDrinkGroup ? '⚡ ' : ''}${escHtml(r.product)}
+              </div>
+              ${flavorLine}
+              <div style="font-size:0.65rem;color:var(--muted);margin-top:3px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.1em;text-transform:uppercase;">${label}</div>
+              ${lowMargin ? `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,214,10,0.12);border:1px solid rgba(255,214,10,0.45);border-radius:6px;padding:3px 8px;font-size:0.62rem;font-weight:700;color:#ffd60a;margin-top:5px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.1em;text-transform:uppercase;">⚠️ LOW MARGIN</div>` : ''}
+            </div>
+            <div style="flex-shrink:0;text-align:right;">
+              <div class="qty-badge ${badge}">${qty}</div>
+              <div class="qty-label">QTY LEFT</div>
+            </div>
+          </div>
+
+          <div class="card-stats">
+            <div class="mini-stat">
+              <div class="mini-stat-val" style="color:var(--gold);font-size:${r.isDrinkGroup ? '0.7rem' : '1rem'};">${priceDisplay}</div>
+              <div class="mini-stat-lbl">Price</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-val">${r.unitsSold}</div>
+              <div class="mini-stat-lbl">Sold</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-val" style="color:var(--green);">${fmt(itemRev)}</div>
+              <div class="mini-stat-lbl">Revenue</div>
+            </div>
+          </div>
+
+          <div class="profit-meter-label">
+            <span class="profit-meter-title">📈 Profit Meter</span>
+            <span class="profit-meter-val">${fmt(itemRev)}</span>
+          </div>
+          <div class="meter-track">
+            <div class="meter-fill" style="width:0%;"></div>
+          </div>
+
+          ${r.damaged > 0 ? `<div class="damaged-tag">⚠️ ${r.damaged} Damaged</div>` : ''}
+          ${r.isDrinkGroup ? `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(0,245,118,0.08);border:1px solid rgba(0,245,118,0.25);border-radius:6px;padding:3px 8px;font-size:0.62rem;font-weight:700;color:rgba(0,245,118,0.7);margin-top:10px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.1em;text-transform:uppercase;">🧮 2 for $5 deal · avg $2.50/can</div>` : ''}
+        </div>
+      `;
+
+      // Animate meter fill with stagger
+      setTimeout(() => {
+        const fill = el.querySelector('.meter-fill');
+        if (fill) fill.style.width = fillPct + '%';
+      }, 80 + idx * 60);
+
+      return el;
+    }
+
     // ── Render ───────────────────────────────────────────────────
     function render(rows) {
-      // Totals
+      // ── Group drinks first ──
+      const { drinkGroup, snackRows } = groupRows(rows);
+
+      // ── Compute totals across ALL original rows ──
+      // Revenue: drinks use $2.50 avg; snacks use their salePrice
       let totalRevenue = 0;
       let totalCost    = 0;
 
       rows.forEach(r => {
-        totalRevenue += r.unitsSold * r.salePrice;
-        // Re-Up Cost = Initial Inventory * Unit Cost
+        if (DRINK_RE.test(r.product)) {
+          totalRevenue += r.unitsSold * DRINK_AVG_PRICE;
+        } else {
+          totalRevenue += r.unitsSold * r.salePrice;
+        }
         totalCost += r.initInv * r.unitCost;
       });
 
@@ -594,78 +719,27 @@
 
       // Show stats
       const statsEl = document.getElementById('statsSection');
-      statsEl.style.display = '';
-      statsEl.style.removeProperty('display');
-      // workaround for !important hiding trick
       statsEl.removeAttribute('style');
       statsEl.classList.remove('hidden');
       statsEl.style.display = 'grid';
 
       document.getElementById('inventoryTitle').style.display = '';
 
-      // Card grid
-      const maxRevenue = Math.max(...rows.map(r => r.unitsSold * r.salePrice), 1);
+      // ── Build card list: drink group first, then snacks ──
+      const displayRows = [];
+      if (drinkGroup) displayRows.push(drinkGroup);
+      displayRows.push(...snackRows);
+
+      const maxRevenue = Math.max(
+        ...displayRows.map(r => r.isDrinkGroup ? r.revenue : r.unitsSold * r.salePrice),
+        1
+      );
+
       const grid = document.getElementById('cardGrid');
       grid.innerHTML = '';
 
-      rows.forEach((r, idx) => {
-        const qty      = Math.max(0, r.initInv - r.unitsSold - r.damaged);
-        const itemRev  = r.unitsSold * r.salePrice;
-        const fillPct  = Math.round((itemRev / maxRevenue) * 100);
-        const { card, badge, label } = qtyClass(qty);
-        const margin   = r.salePrice - r.unitCost;
-        const lowMargin = margin < 0.20;
-
-        const el = document.createElement('div');
-        el.className = `trading-card ${card}`;
-        el.innerHTML = `
-          <div class="card-stripe"></div>
-          <div class="card-body">
-            <div class="card-header">
-              <div>
-                <div class="product-name">${escHtml(r.product)}</div>
-                <div style="font-size:0.65rem; color:var(--muted); margin-top:3px; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.1em; text-transform:uppercase;">${label}</div>
-                ${lowMargin ? `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,214,10,0.12);border:1px solid rgba(255,214,10,0.45);border-radius:6px;padding:3px 8px;font-size:0.62rem;font-weight:700;color:#ffd60a;margin-top:5px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.1em;text-transform:uppercase;">⚠️ LOW MARGIN</div>` : ''}
-              </div>
-              <div>
-                <div class="qty-badge ${badge}">${qty}</div>
-                <div class="qty-label">QTY LEFT</div>
-              </div>
-            </div>
-
-            <div class="card-stats">
-              <div class="mini-stat">
-                <div class="mini-stat-val" style="color:var(--gold);">${fmt(r.salePrice)}</div>
-                <div class="mini-stat-lbl">Price</div>
-              </div>
-              <div class="mini-stat">
-                <div class="mini-stat-val">${r.unitsSold}</div>
-                <div class="mini-stat-lbl">Sold</div>
-              </div>
-              <div class="mini-stat">
-                <div class="mini-stat-val" style="color:var(--green);">${fmt(itemRev)}</div>
-                <div class="mini-stat-lbl">Revenue</div>
-              </div>
-            </div>
-
-            <div class="profit-meter-label">
-              <span class="profit-meter-title">📈 Profit Meter</span>
-              <span class="profit-meter-val">${fmt(itemRev)}</span>
-            </div>
-            <div class="meter-track">
-              <div class="meter-fill" data-fill="${fillPct}" style="width:0%;"></div>
-            </div>
-
-            ${r.damaged > 0 ? `<div class="damaged-tag">⚠️ ${r.damaged} Damaged</div>` : ''}
-          </div>
-        `;
-        grid.appendChild(el);
-
-        // Animate meter fill after a stagger
-        setTimeout(() => {
-          const fill = el.querySelector('.meter-fill');
-          if (fill) fill.style.width = fillPct + '%';
-        }, 80 + idx * 60);
+      displayRows.forEach((r, idx) => {
+        grid.appendChild(buildCard(r, maxRevenue, idx));
       });
 
       grid.style.display = 'grid';
