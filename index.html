@@ -1,0 +1,717 @@
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  ⚠️  IMPORTANT: GOOGLE SHEETS SETUP REQUIRED                ║
+  ║                                                              ║
+  ║  Before this app works, you MUST publish your sheet:        ║
+  ║  1. Open your Google Sheet                                   ║
+  ║  2. File → Share → Publish to the web                       ║
+  ║  3. Choose "Comma-separated values (.csv)"                   ║
+  ║  4. Click "Publish" and confirm                              ║
+  ║                                                              ║
+  ║  The CSV URL in this file is already set correctly.         ║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Z-SNX: Executive Field Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --green:  #00f576;
+      --orange: #ff8c00;
+      --red:    #ff2d55;
+      --gold:   #ffd60a;
+      --bg:     #0a0a0f;
+      --card:   #13131f;
+      --border: #2a2a3d;
+      --text:   #e8e8f0;
+      --muted:  #6b6b8a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Barlow', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* === SCANLINE OVERLAY === */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.04) 2px,
+        rgba(0,0,0,0.04) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* === HEADER === */
+    .site-header {
+      background: linear-gradient(135deg, #0d0d1a 0%, #1a0a2e 50%, #0d0d1a 100%);
+      border-bottom: 2px solid var(--gold);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .site-header::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% -20%, rgba(255,214,10,0.15) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      letter-spacing: 0.05em;
+      line-height: 1;
+    }
+
+    .logo-emoji {
+      display: inline-block;
+      animation: bounce 2s ease-in-out infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0) rotate(-5deg); }
+      50%       { transform: translateY(-6px) rotate(5deg); }
+    }
+
+    /* === STAT CARDS === */
+    .stat-card {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      padding: 20px 24px;
+      cursor: default;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .stat-card:hover { transform: translateY(-3px); }
+
+    .stat-card.cash {
+      background: linear-gradient(135deg, #003320, #005530);
+      border: 2px solid var(--green);
+      box-shadow: 0 0 30px rgba(0,245,118,0.2), inset 0 1px 0 rgba(0,245,118,0.2);
+    }
+
+    .stat-card.reup {
+      background: linear-gradient(135deg, #1a1400, #2a2000);
+      border: 2px solid var(--gold);
+      box-shadow: 0 0 30px rgba(255,214,10,0.15), inset 0 1px 0 rgba(255,214,10,0.15);
+    }
+
+    .stat-card.profit {
+      background: linear-gradient(135deg, #1a0030, #2a0050);
+      border: 2px solid #a855f7;
+      box-shadow: 0 0 30px rgba(168,85,247,0.2), inset 0 1px 0 rgba(168,85,247,0.2);
+    }
+
+    .stat-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2.2rem, 8vw, 3.5rem);
+      line-height: 1;
+      letter-spacing: 0.02em;
+    }
+
+    .stat-card.cash  .stat-value { color: var(--green); }
+    .stat-card.reup  .stat-value { color: var(--gold); }
+    .stat-card.profit .stat-value { color: #c084fc; }
+
+    .stat-sub {
+      font-size: 0.75rem;
+      opacity: 0.6;
+      margin-top: 4px;
+    }
+
+    /* Bank of Dad badge */
+    .bod-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,45,85,0.15);
+      border: 1px solid rgba(255,45,85,0.4);
+      border-radius: 100px;
+      padding: 4px 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--red);
+      font-family: 'Barlow Condensed', sans-serif;
+      letter-spacing: 0.05em;
+    }
+
+    /* === TRADING CARDS === */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .trading-card {
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .trading-card:hover {
+      transform: translateY(-5px) scale(1.01);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+
+    .trading-card.qty-green  { border-color: rgba(0,245,118,0.4); }
+    .trading-card.qty-green:hover  { border-color: var(--green); box-shadow: 0 20px 40px rgba(0,245,118,0.15); }
+
+    .trading-card.qty-orange { border-color: rgba(255,140,0,0.4); }
+    .trading-card.qty-orange:hover { border-color: var(--orange); box-shadow: 0 20px 40px rgba(255,140,0,0.15); }
+
+    .trading-card.qty-red    { border-color: rgba(255,45,85,0.5); }
+    .trading-card.qty-red:hover    { border-color: var(--red); box-shadow: 0 20px 40px rgba(255,45,85,0.15); }
+    .trading-card.qty-red    { animation: urgentPulse 2s ease-in-out infinite; }
+
+    @keyframes urgentPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,45,85,0); }
+      50%       { box-shadow: 0 0 0 6px rgba(255,45,85,0.15); }
+    }
+
+    /* Card stripe at top */
+    .card-stripe {
+      height: 5px;
+      width: 100%;
+    }
+    .qty-green  .card-stripe { background: linear-gradient(90deg, var(--green), #00c957); }
+    .qty-orange .card-stripe { background: linear-gradient(90deg, var(--orange), #ff6600); }
+    .qty-red    .card-stripe { background: linear-gradient(90deg, var(--red), #cc0033); }
+
+    .card-body { padding: 18px 20px 20px; }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+      gap: 12px;
+    }
+
+    .product-name {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 900;
+      font-size: 1.15rem;
+      letter-spacing: 0.03em;
+      line-height: 1.2;
+      flex: 1;
+      text-transform: uppercase;
+    }
+
+    .qty-badge {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.8rem;
+      line-height: 1;
+      min-width: 60px;
+      text-align: right;
+    }
+    .qty-badge.green  { color: var(--green); }
+    .qty-badge.orange { color: var(--orange); }
+    .qty-badge.red    { color: var(--red); }
+
+    .qty-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      font-weight: 700;
+      opacity: 0.5;
+      text-align: right;
+      margin-top: -4px;
+    }
+
+    .card-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .mini-stat {
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    .mini-stat-val {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .mini-stat-lbl {
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      opacity: 0.45;
+      margin-top: 3px;
+    }
+
+    /* Profit Meter */
+    .profit-meter-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .profit-meter-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      opacity: 0.5;
+    }
+
+    .profit-meter-val {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--green);
+    }
+
+    .meter-track {
+      background: rgba(255,255,255,0.08);
+      border-radius: 100px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .meter-fill {
+      height: 100%;
+      border-radius: 100px;
+      background: linear-gradient(90deg, #00c957, var(--green));
+      transition: width 1s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: 0 0 10px rgba(0,245,118,0.5);
+      width: 0%; /* animated in */
+    }
+
+    /* damaged tag */
+    .damaged-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255,45,85,0.12);
+      border: 1px solid rgba(255,45,85,0.3);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: rgba(255,45,85,0.8);
+      margin-top: 10px;
+      font-family: 'Barlow Condensed', sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* === SECTION TITLE === */
+    .section-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.6rem;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* === LOADING / ERROR === */
+    .loader {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      gap: 16px;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loader-text {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* === REFRESH BUTTON === */
+    .refresh-btn {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1.5px solid var(--border);
+      color: var(--muted);
+      border-radius: 100px;
+      padding: 8px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .refresh-btn:hover {
+      border-color: var(--gold);
+      color: var(--gold);
+      background: rgba(255,214,10,0.06);
+    }
+
+    .refresh-btn:active { transform: scale(0.96); }
+
+    .refresh-icon { transition: transform 0.4s; }
+    .refresh-btn.spinning .refresh-icon { animation: spin 0.6s linear infinite; }
+
+    /* === FOOTER === */
+    footer {
+      text-align: center;
+      padding: 32px 16px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: 'Barlow Condensed', sans-serif;
+      letter-spacing: 0.1em;
+      border-top: 1px solid var(--border);
+      margin-top: 48px;
+    }
+
+    /* === RESPONSIVE TWEAKS === */
+    @media (max-width: 400px) {
+      .card-stats { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+      .mini-stat { padding: 6px 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header px-4 pt-6 pb-5">
+    <div class="max-w-2xl mx-auto relative z-10">
+      <div class="flex items-center justify-between mb-1">
+        <div>
+          <div class="logo text-white" style="font-size: clamp(2.4rem, 10vw, 4rem);">
+            <span class="logo-emoji">🍿</span> Z-SNX
+          </div>
+          <div style="font-family:'Barlow Condensed',sans-serif; font-size:0.7rem; letter-spacing:0.2em; color:rgba(255,214,10,0.7); text-transform:uppercase; font-weight:700;">
+            Executive Field Dashboard
+          </div>
+        </div>
+        <button class="refresh-btn" id="refreshBtn" onclick="loadData()">
+          <svg class="refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="max-w-2xl mx-auto px-4 py-6">
+
+    <!-- STATS ROW -->
+    <div id="statsSection" class="grid grid-cols-1 gap-3 mb-6" style="display:none!important;">
+
+      <div class="grid gap-3" style="grid-template-columns: 1fr 1fr;">
+        <!-- Cash In Pocket -->
+        <div class="stat-card cash">
+          <div class="stat-label">💵 Cash In Pocket</div>
+          <div class="stat-value" id="statCash">$0</div>
+          <div class="stat-sub">gross revenue</div>
+        </div>
+        <!-- Re-Up Cost -->
+        <div class="stat-card reup">
+          <div class="stat-label">📦 Re-Up Cost</div>
+          <div class="stat-value" id="statReup">$0</div>
+          <div class="stat-sub">initial inventory</div>
+        </div>
+      </div>
+
+      <!-- Net Profit — full width -->
+      <div class="stat-card profit">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="stat-label">⚡ Net Profit</div>
+            <div class="stat-value" id="statProfit">$0</div>
+            <div class="stat-sub">after Bank of Dad fee</div>
+          </div>
+          <div class="text-right">
+            <span class="bod-badge">🏦 Bank of Dad: -$2.00</span>
+            <div style="font-size:0.65rem; color:var(--muted); margin-top:6px; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.05em;">
+              "Infrastructure fee"
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUCT GRID -->
+    <div class="section-title" id="inventoryTitle" style="display:none;">Inventory</div>
+
+    <div id="loader" class="loader">
+      <div class="spinner"></div>
+      <div class="loader-text">Loading inventory...</div>
+    </div>
+
+    <div id="errorBox" style="display:none;"
+      class="text-center py-12 px-6 rounded-2xl border border-red-800 bg-red-950 bg-opacity-30">
+      <div style="font-size:2.5rem; margin-bottom:8px;">😬</div>
+      <div style="font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:1.1rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--red);">
+        Couldn't Load Data
+      </div>
+      <div id="errorMsg" style="font-size:0.85rem; color:var(--muted); margin-top:6px; max-width:280px; margin-left:auto; margin-right:auto;">
+        Make sure the Google Sheet is published to the web as CSV.
+      </div>
+      <button onclick="loadData()" class="refresh-btn mt-5 mx-auto">
+        Try Again
+      </button>
+    </div>
+
+    <div id="cardGrid" class="card-grid" style="display:none;"></div>
+  </main>
+
+  <footer>
+    Z-SNX &bull; EXECUTIVE FIELD DASHBOARD &bull; 💰
+    <div style="margin-top:10px; display:flex; flex-direction:column; gap:4px; align-items:center;">
+      <span style="color:rgba(255,214,10,0.55);">📦 Logistics: Off-site Cold Storage (Active)</span>
+      <span style="color:rgba(255,45,85,0.55);">🏦 Agreement: $2.00/wk Infrastructure Fee</span>
+    </div>
+  </footer>
+
+  <script>
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vStvDjvFMqI_d1SNLgIYJZaptsXeuwSWGVs0qxRfbkuoy-4CsqfHAc_HOpVDi4LAQu1xLVZIiQkvO78/pub?gid=0&single=true&output=csv';
+    const BANK_OF_DAD_FEE = 2.00;
+
+    // ── CSV Parser ───────────────────────────────────────────────
+    function parseCSV(text) {
+      const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) return [];
+      // headers: Product, Initial Inventory, Unit Cost, Sale Price, Units Sold, Damaged
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = splitCSVLine(lines[i]);
+        if (cols.length < 6) continue;
+        const product   = cols[0].trim();
+        const initInv   = parseFloat(cols[1]) || 0;
+        const unitCost  = parseFloat(cols[2].replace(/[$,]/g, '')) || 0;
+        const salePrice = parseFloat(cols[3].replace(/[$,]/g, '')) || 0;
+        const unitsSold = parseFloat(cols[4]) || 0;
+        const damaged   = parseFloat(cols[5]) || 0;
+        if (!product) continue;
+        rows.push({ product, initInv, unitCost, salePrice, unitsSold, damaged });
+      }
+      return rows;
+    }
+
+    function splitCSVLine(line) {
+      const result = [];
+      let cur = '';
+      let inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { inQ = !inQ; }
+        else if (c === ',' && !inQ) { result.push(cur); cur = ''; }
+        else { cur += c; }
+      }
+      result.push(cur);
+      return result;
+    }
+
+    // ── Qty colour logic ─────────────────────────────────────────
+    function qtyClass(qty) {
+      if (qty < 3)  return { card: 'qty-red',    badge: 'red',    label: '🔴 RESTOCK NOW' };
+      if (qty < 10) return { card: 'qty-orange',  badge: 'orange', label: '🟠 Running Low' };
+      return              { card: 'qty-green',   badge: 'green',  label: '🟢 Stocked' };
+    }
+
+    // ── Render ───────────────────────────────────────────────────
+    function render(rows) {
+      // Totals
+      let totalRevenue = 0;
+      let totalCost    = 0;
+
+      rows.forEach(r => {
+        totalRevenue += r.unitsSold * r.salePrice;
+        // Re-Up Cost = Initial Inventory * Unit Cost
+        totalCost += r.initInv * r.unitCost;
+      });
+
+      const netProfit = totalRevenue - totalCost - BANK_OF_DAD_FEE;
+
+      document.getElementById('statCash').textContent   = fmt(totalRevenue);
+      document.getElementById('statReup').textContent   = fmt(totalCost);
+      document.getElementById('statProfit').textContent = fmt(netProfit);
+
+      // Show stats
+      const statsEl = document.getElementById('statsSection');
+      statsEl.style.display = '';
+      statsEl.style.removeProperty('display');
+      // workaround for !important hiding trick
+      statsEl.removeAttribute('style');
+      statsEl.classList.remove('hidden');
+      statsEl.style.display = 'grid';
+
+      document.getElementById('inventoryTitle').style.display = '';
+
+      // Card grid
+      const maxRevenue = Math.max(...rows.map(r => r.unitsSold * r.salePrice), 1);
+      const grid = document.getElementById('cardGrid');
+      grid.innerHTML = '';
+
+      rows.forEach((r, idx) => {
+        const qty      = Math.max(0, r.initInv - r.unitsSold - r.damaged);
+        const itemRev  = r.unitsSold * r.salePrice;
+        const fillPct  = Math.round((itemRev / maxRevenue) * 100);
+        const { card, badge, label } = qtyClass(qty);
+        const margin   = r.salePrice - r.unitCost;
+        const lowMargin = margin < 0.20;
+
+        const el = document.createElement('div');
+        el.className = `trading-card ${card}`;
+        el.innerHTML = `
+          <div class="card-stripe"></div>
+          <div class="card-body">
+            <div class="card-header">
+              <div>
+                <div class="product-name">${escHtml(r.product)}</div>
+                <div style="font-size:0.65rem; color:var(--muted); margin-top:3px; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.1em; text-transform:uppercase;">${label}</div>
+                ${lowMargin ? `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,214,10,0.12);border:1px solid rgba(255,214,10,0.45);border-radius:6px;padding:3px 8px;font-size:0.62rem;font-weight:700;color:#ffd60a;margin-top:5px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.1em;text-transform:uppercase;">⚠️ LOW MARGIN</div>` : ''}
+              </div>
+              <div>
+                <div class="qty-badge ${badge}">${qty}</div>
+                <div class="qty-label">QTY LEFT</div>
+              </div>
+            </div>
+
+            <div class="card-stats">
+              <div class="mini-stat">
+                <div class="mini-stat-val" style="color:var(--gold);">${fmt(r.salePrice)}</div>
+                <div class="mini-stat-lbl">Price</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-val">${r.unitsSold}</div>
+                <div class="mini-stat-lbl">Sold</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-val" style="color:var(--green);">${fmt(itemRev)}</div>
+                <div class="mini-stat-lbl">Revenue</div>
+              </div>
+            </div>
+
+            <div class="profit-meter-label">
+              <span class="profit-meter-title">📈 Profit Meter</span>
+              <span class="profit-meter-val">${fmt(itemRev)}</span>
+            </div>
+            <div class="meter-track">
+              <div class="meter-fill" data-fill="${fillPct}" style="width:0%;"></div>
+            </div>
+
+            ${r.damaged > 0 ? `<div class="damaged-tag">⚠️ ${r.damaged} Damaged</div>` : ''}
+          </div>
+        `;
+        grid.appendChild(el);
+
+        // Animate meter fill after a stagger
+        setTimeout(() => {
+          const fill = el.querySelector('.meter-fill');
+          if (fill) fill.style.width = fillPct + '%';
+        }, 80 + idx * 60);
+      });
+
+      grid.style.display = 'grid';
+    }
+
+    function fmt(n) {
+      return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Load Data ────────────────────────────────────────────────
+    async function loadData() {
+      const btn = document.getElementById('refreshBtn');
+      btn.classList.add('spinning');
+
+      document.getElementById('loader').style.display  = 'flex';
+      document.getElementById('errorBox').style.display = 'none';
+      document.getElementById('cardGrid').style.display = 'none';
+      document.getElementById('statsSection').style.display = 'none';
+      document.getElementById('inventoryTitle').style.display = 'none';
+
+      try {
+        // Cache-bust so Sheets always returns fresh data
+        const url = `${CSV_URL}&_=${Date.now()}`;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        const rows = parseCSV(text);
+        if (!rows.length) throw new Error('No data rows found in the sheet.');
+        document.getElementById('loader').style.display = 'none';
+        render(rows);
+      } catch (err) {
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('errorMsg').textContent = err.message;
+        document.getElementById('errorBox').style.display = 'block';
+        console.error('Data load error:', err);
+      } finally {
+        btn.classList.remove('spinning');
+      }
+    }
+
+    // Kick it off
+    loadData();
+  </script>
+</body>
+</html>
